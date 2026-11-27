@@ -29,7 +29,11 @@ function toast(msg) {
 /* ---------- key / paths ---------- */
 function readKey() {
   const m = location.hash.match(/k=([A-Za-z0-9]{20,64})/);
-  return m ? m[1] : null;
+  if (m) { store.set("zaiko-key", m[1]); return m[1]; }
+  // #k= のないアドレスで開いたときは、この端末で前回開いたボードを使う
+  const saved = store.get("zaiko-key");
+  if (saved && /^[A-Za-z0-9]{20,64}$/.test(saved)) { history.replaceState(null, "", "#k=" + saved); return saved; }
+  return null;
 }
 function newKey() {
   const abc = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
