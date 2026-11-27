@@ -5,7 +5,7 @@ import FIREBASE_CONFIG from "./firebase-config.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, setDoc,
-  onSnapshot, query, where, orderBy, limit, writeBatch,
+  onSnapshot, query, where, orderBy, limit, writeBatch, getDocs,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const DAY = 86400000;
@@ -27,6 +27,17 @@ function toast(msg) {
 }
 
 /* ---------- key / paths ---------- */
+// 合言葉から在庫ボードのキーを作る（同じ合言葉なら、どの端末でも同じキーになる）
+async function keyFromPass(p) {
+  const text = "zaiko-board:v1:" + String(p).normalize("NFKC").trim();
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("").slice(0, 40);
+}
+const PASS_MIN = 6;
+async function boardHasItems(k) {
+  const snap = await getDocs(query(collection(fs, "stores", k, "items"), limit(1)));
+  return !snap.empty;
+}
 function readKey() {
   const m = location.hash.match(/k=([A-Za-z0-9]{20,64})/);
   if (m) { store.set("zaiko-key", m[1]); return m[1]; }
@@ -243,6 +254,11 @@ function viewSettings() {
     <div class="box"><h4>この端末の名前</h4>
       <p>履歴に表示される名前です。端末（スマホ・PC）ごとに設定します。</p>
       <div class="copyline"><input id="set-name" value="${esc(myName())}" placeholder="例：安藤" style="background:var(--surface)"><button class="btn primary" data-act="saveName">保存</button></div></div>
+    <div class="box"><h4>合言葉</h4>
+      <p>合言葉を決めておくと、スタッフは <b>${esc(location.origin + location.pathname)}</b> を開いて、最初の1回だけ合言葉を入れれば使えるようになります。${PASS_MIN}文字以上で、院外の人が思いつかない言葉にしてください。</p>
+      <p>合言葉を変えると、新しい合言葉のボードに今のデータを移します。以前の合言葉やリンクで開いている端末では、新しい合言葉を入れ直してもらってください。</p>
+      <div class="copyline"><input id="set-pass" autocomplete="off" placeholder="新しい合言葉" style="background:var(--surface)"><button class="btn primary" data-act="setPass" id="pass-btn">合言葉を設定</button></div>
+      <p id="pass-msg"></p></div>
     <div class="box"><h4>この在庫ボードのリンク</h4>
       <p>スタッフにはこのリンクを共有してください。<b style="color:var(--danger)">このリンクを知っている人は誰でも在庫を変更できます。</b>院内のスタッフだけに共有し、外部に出さないでください。</p>
       <div class="copyline"><input id="set-link" readonly value="${esc(boardLink())}" aria-label="在庫ボードのリンク"><button class="btn" data-act="copyLink">コピー</button></div></div>
@@ -391,6 +407,45 @@ async function importData() {
   } finally { btn.disabled = false; }
 }
 
+async function openWithPass() {
+  const inp = $("#pass-in"), msg = $("#pass-msg"), btn = $("#pass-open");
+  const p = inp.value.normalize("NFKC").trim();
+  if (!p) { inp.focus(); return; }
+  btn.disabled = true; msg.textContent = "確認中…";
+  try {
+    const k = await keyFromPass(p);
+    if (!(await boardHasItems(k))) { msg.textContent = "合言葉が違います。もう一度確かめて入力してください。"; return; }
+    store.set("zaiko-key", k); location.hash = "k=" + k; location.reload();
+  } catch (e) { console.error(e); msg.textContent = "確認できませんでした。通信状態を確認してください。"; }
+  finally { btn.disabled = false; }
+}
+async function setPass() {
+  const inp = $("#set-pass"), msg = $("#pass-msg"), btn = $("#pass-btn");
+  const p = inp.value.normalize("NFKC").trim();
+  if (p.length < PASS_MIN) { msg.textContent = `合言葉は${PASS_MIN}文字以上にしてください。`; inp.focus(); return; }
+  btn.disabled = true; msg.textContent = "設定中…（データを移しています）";
+  try {
+    const k = await keyFromPass(p);
+    if (k === KEY) { msg.textContent = "今と同じ合言葉です。"; return; }
+    if (await boardHasItems(k)) { msg.textContent = "この合言葉は使えません。別の合言葉にしてください。"; return; }
+    const its = [...S.items.values()];
+    for (let i = 0; i < its.length; i += 400) {
+      const b = writeBatch(fs);
+      its.slice(i, i + 400).forEach(it => { const o = {}; ITEM_FIELDS.forEach(f => { o[f] = it[f] ?? null; }); o.stock = Number(o.stock) || 0; b.set(doc(fs, "stores", k, "items", it.id), o); });
+      await b.commit();
+    }
+    const logs = (await getDocs(logsCol())).docs;
+    for (let i = 0; i < logs.length; i += 400) {
+      const b = writeBatch(fs);
+      logs.slice(i, i + 400).forEach(d => b.set(doc(fs, "stores", k, "logs", d.id), d.data()));
+      await b.commit();
+    }
+    store.set("zaiko-key", k); store.set("zaiko-flash", "合言葉を設定しました。スタッフには合言葉を伝えてください");
+    location.hash = "k=" + k; location.reload();
+  } catch (e) { console.error(e); msg.textContent = "途中で設定できませんでした。通信状態を確認して、もう一度押してください。"; }
+  finally { btn.disabled = false; }
+}
+
 /* ---------- events ---------- */
 document.addEventListener("click", async (e) => {
   const el = e.target.closest("[data-act], .tab"); if (!el) return;
@@ -423,6 +478,7 @@ document.addEventListener("click", async (e) => {
     case "del": {
       if (!S.delArm) { S.delArm = true; el.textContent = "もう一度押すと削除します"; setTimeout(() => { S.delArm = false; const b = $("#del-btn"); if (b) b.textContent = "この品目を削除"; }, 4000); break; }
       const name = S.items.get(id)?.name; if (await write(id, () => deleteDoc(itemDoc(id)))) { toast(`${name}を削除しました`); closeSheet(); } break; }
+    case "setPass": setPass(); break;
     case "saveName": { store.set("zaiko-name", $("#set-name").value.trim()); toast("名前を保存しました"); break; }
     case "copyLink": copyText(boardLink(), $("#set-link"), "リンクをコピーしました"); break;
     case "export": exportData(); break;
@@ -447,7 +503,10 @@ document.addEventListener("input", (e) => {
   if (e.target.id === "q") { S.q = e.target.value; const pos = e.target.selectionStart; render(); const q = $("#q"); if (q) { q.focus(); q.setSelectionRange(pos, pos); } }
   if (e.target.closest && e.target.closest("#item-form")) updatePreview();
 });
-document.addEventListener("submit", (e) => { if (e.target.id === "item-form") { e.preventDefault(); saveForm(); } });
+document.addEventListener("submit", (e) => {
+  if (e.target.id === "item-form") { e.preventDefault(); saveForm(); }
+  if (e.target.id === "pass-form") { e.preventDefault(); openWithPass(); }
+});
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && S.sheet) closeSheet(); });
 $("#fab-add").addEventListener("click", () => openSheet("new"));
 window.addEventListener("hashchange", () => { if (readKey() !== KEY) location.reload(); });
@@ -463,19 +522,22 @@ function boot() {
     showMessage("Firebaseの設定がまだです", `<p>firebase-config.js に、Firebaseの画面でコピーした設定を貼り付けてください。手順は README.md にあります。</p>`);
     return;
   }
+  try { fs = getFirestore(initializeApp(FIREBASE_CONFIG)); }
+  catch (e) { console.error(e); showMessage("Firebaseに接続できませんでした", `<p>firebase-config.js の内容が正しいか確認してください。</p>`); return; }
   KEY = readKey();
   if (!KEY) {
-    sync.textContent = "リンクが必要です";
     // 「新しい在庫ボードを作る」は、アドレスの最後に #new を付けたときだけ出す（間違えて作らないように）
     const allowCreate = /(^#|&)new/.test(location.hash);
-    showMessage("在庫ボードのリンクから開いてください",
-      `<p>この端末では、まだ在庫ボードを開いたことがありません。スタッフ用の専用リンク（最後に <b>#k=</b> が付いたもの）を一度開いてください。次からは、このアドレスだけで開けるようになります。</p><p>専用リンクが分からないときは、管理している人に聞いてください。</p>`,
+    sync.textContent = "合言葉が必要です";
+    showMessage("合言葉を入れてください",
+      `<p>院内で決めた合言葉を入れてください。この端末では、次からは入れなくても開けます。</p>
+      <form id="pass-form" class="copyline" autocomplete="off"><input id="pass-in" aria-label="合言葉" placeholder="合言葉" style="background:var(--surface)"><button class="btn primary" id="pass-open" type="submit">開く</button></form>
+      <p id="pass-msg"></p><p>合言葉が分からないときは、管理している人に聞いてください。</p>`,
       !allowCreate ? "" : `<div class="box"><h4>はじめて使う場合</h4><p>新しい在庫ボードを作ると、専用のリンクが発行されます。作ったあとは「設定」タブでリンクをコピーして、スタッフに共有してください。</p><div class="acts"><button class="btn primary" data-act="create">新しい在庫ボードを作る</button></div></div>`);
     return;
   }
-  try { fs = getFirestore(initializeApp(FIREBASE_CONFIG)); }
-  catch (e) { console.error(e); showMessage("Firebaseに接続できませんでした", `<p>firebase-config.js の内容が正しいか確認してください。</p>`); return; }
   $("#tabs").hidden = false;
+  const flash = store.get("zaiko-flash"); if (flash) { store.set("zaiko-flash", ""); try { localStorage.removeItem("zaiko-flash"); } catch {} toast(flash); }
   const v = store.get("zaiko-view"); if (["order", "stock", "log", "settings"].includes(v)) S.view = v;
   const timer = setTimeout(() => { if (!S.gotItems) sync.textContent = "データにまだつながりません。通信を確認してください"; }, 10000);
   onSnapshot(itemsCol(), { includeMetadataChanges: false }, (snap) => {
