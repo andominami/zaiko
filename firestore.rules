@@ -1,0 +1,35 @@
+rules_version = '2';
+// 院内在庫ボード用のルール。
+// ・データは stores/<秘密のキー>/items と stores/<秘密のキー>/logs にだけ置けます。
+// ・秘密のキーを知らない人は、中身を読むことも、キーの一覧を見ることもできません。
+// ・履歴（logs）は追加だけできて、あとから書き換えや削除はできません。
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function validKey(key) {
+      return key.size() >= 20 && key.size() <= 64 && key.matches('^[A-Za-z0-9]+$');
+    }
+
+    match /stores/{key}/items/{itemId} {
+      allow get, list: if validKey(key);
+      allow create, update: if validKey(key)
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 200
+        && request.resource.data.stock is number;
+      allow delete: if validKey(key);
+    }
+
+    match /stores/{key}/logs/{logId} {
+      allow get, list: if validKey(key);
+      allow create: if validKey(key)
+        && request.resource.data.t is number
+        && request.resource.data.type in ['use', 'count', 'receive', 'order'];
+      allow update, delete: if false;
+    }
+
+    // それ以外の場所は、読み書きすべて禁止
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
