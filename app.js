@@ -466,9 +466,11 @@ function boot() {
   KEY = readKey();
   if (!KEY) {
     sync.textContent = "リンクが必要です";
+    // 「新しい在庫ボードを作る」は、アドレスの最後に #new を付けたときだけ出す（間違えて作らないように）
+    const allowCreate = /(^#|&)new/.test(location.hash);
     showMessage("在庫ボードのリンクから開いてください",
-      `<p>このページは、スタッフ用の専用リンク（最後に <b>#k=</b> が付いたもの）から開くと使えます。リンクを持っている場合は、そのリンクを開き直してください。</p>`,
-      `<div class="box"><h4>はじめて使う場合</h4><p>新しい在庫ボードを作ると、専用のリンクが発行されます。作ったあとは「設定」タブでリンクをコピーして、スタッフに共有してください。</p><div class="acts"><button class="btn primary" data-act="create">新しい在庫ボードを作る</button></div></div>`);
+      `<p>この端末では、まだ在庫ボードを開いたことがありません。スタッフ用の専用リンク（最後に <b>#k=</b> が付いたもの）を一度開いてください。次からは、このアドレスだけで開けるようになります。</p><p>専用リンクが分からないときは、管理している人に聞いてください。</p>`,
+      !allowCreate ? "" : `<div class="box"><h4>はじめて使う場合</h4><p>新しい在庫ボードを作ると、専用のリンクが発行されます。作ったあとは「設定」タブでリンクをコピーして、スタッフに共有してください。</p><div class="acts"><button class="btn primary" data-act="create">新しい在庫ボードを作る</button></div></div>`);
     return;
   }
   try { fs = getFirestore(initializeApp(FIREBASE_CONFIG)); }
