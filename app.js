@@ -27,7 +27,7 @@ function toast(msg) {
 }
 
 /* ---------- key / paths ---------- */
-// 合言葉から在庫ボードのキーを作る（同じ合言葉なら、どの端末でも同じキーになる）
+// パスワードから在庫ボードのキーを作る（同じパスワードなら、どの端末でも同じキーになる）
 async function keyFromPass(p) {
   const text = "zaiko-board:v1:" + String(p).normalize("NFKC").trim();
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
@@ -254,10 +254,10 @@ function viewSettings() {
     <div class="box"><h4>この端末の名前</h4>
       <p>履歴に表示される名前です。端末（スマホ・PC）ごとに設定します。</p>
       <div class="copyline"><input id="set-name" value="${esc(myName())}" placeholder="例：安藤" style="background:var(--surface)"><button class="btn primary" data-act="saveName">保存</button></div></div>
-    <div class="box"><h4>合言葉</h4>
-      <p>合言葉を決めておくと、スタッフは <b>${esc(location.origin + location.pathname)}</b> を開いて、最初の1回だけ合言葉を入れれば使えるようになります。${PASS_MIN}文字以上で、院外の人が思いつかない言葉にしてください。</p>
-      <p>合言葉を変えると、新しい合言葉のボードに今のデータを移します。以前の合言葉やリンクで開いている端末では、新しい合言葉を入れ直してもらってください。</p>
-      <div class="copyline"><input id="set-pass" autocomplete="off" placeholder="新しい合言葉" style="background:var(--surface)"><button class="btn primary" data-act="setPass" id="pass-btn">合言葉を設定</button></div>
+    <div class="box"><h4>パスワード</h4>
+      <p>パスワードを決めておくと、スタッフは <b>${esc(location.origin + location.pathname)}</b> を開いて、最初の1回だけパスワードを入れれば使えるようになります。${PASS_MIN}文字以上で、院外の人が思いつかない言葉にしてください。</p>
+      <p>パスワードを変えると、新しいパスワードのボードに今のデータを移します。以前のパスワードやリンクで開いている端末では、新しいパスワードを入れ直してもらってください。</p>
+      <div class="copyline"><input id="set-pass" autocomplete="off" placeholder="新しいパスワード" style="background:var(--surface)"><button class="btn primary" data-act="setPass" id="pass-btn">パスワードを設定</button></div>
       <p id="pass-msg"></p></div>
     <div class="box"><h4>この在庫ボードのリンク</h4>
       <p>スタッフにはこのリンクを共有してください。<b style="color:var(--danger)">このリンクを知っている人は誰でも在庫を変更できます。</b>院内のスタッフだけに共有し、外部に出さないでください。</p>
@@ -414,7 +414,7 @@ async function openWithPass() {
   btn.disabled = true; msg.textContent = "確認中…";
   try {
     const k = await keyFromPass(p);
-    if (!(await boardHasItems(k))) { msg.textContent = "合言葉が違います。もう一度確かめて入力してください。"; return; }
+    if (!(await boardHasItems(k))) { msg.textContent = "パスワードが違います。もう一度確かめて入力してください。"; return; }
     store.set("zaiko-key", k); location.hash = "k=" + k; location.reload();
   } catch (e) { console.error(e); msg.textContent = "確認できませんでした。通信状態を確認してください。"; }
   finally { btn.disabled = false; }
@@ -422,12 +422,12 @@ async function openWithPass() {
 async function setPass() {
   const inp = $("#set-pass"), msg = $("#pass-msg"), btn = $("#pass-btn");
   const p = inp.value.normalize("NFKC").trim();
-  if (p.length < PASS_MIN) { msg.textContent = `合言葉は${PASS_MIN}文字以上にしてください。`; inp.focus(); return; }
+  if (p.length < PASS_MIN) { msg.textContent = `パスワードは${PASS_MIN}文字以上にしてください。`; inp.focus(); return; }
   btn.disabled = true; msg.textContent = "設定中…（データを移しています）";
   try {
     const k = await keyFromPass(p);
-    if (k === KEY) { msg.textContent = "今と同じ合言葉です。"; return; }
-    if (await boardHasItems(k)) { msg.textContent = "この合言葉は使えません。別の合言葉にしてください。"; return; }
+    if (k === KEY) { msg.textContent = "今と同じパスワードです。"; return; }
+    if (await boardHasItems(k)) { msg.textContent = "このパスワードは使えません。別のパスワードにしてください。"; return; }
     const its = [...S.items.values()];
     for (let i = 0; i < its.length; i += 400) {
       const b = writeBatch(fs);
@@ -440,7 +440,7 @@ async function setPass() {
       logs.slice(i, i + 400).forEach(d => b.set(doc(fs, "stores", k, "logs", d.id), d.data()));
       await b.commit();
     }
-    store.set("zaiko-key", k); store.set("zaiko-flash", "合言葉を設定しました。スタッフには合言葉を伝えてください");
+    store.set("zaiko-key", k); store.set("zaiko-flash", "パスワードを設定しました。スタッフにはパスワードを伝えてください");
     location.hash = "k=" + k; location.reload();
   } catch (e) { console.error(e); msg.textContent = "途中で設定できませんでした。通信状態を確認して、もう一度押してください。"; }
   finally { btn.disabled = false; }
@@ -528,11 +528,11 @@ function boot() {
   if (!KEY) {
     // 「新しい在庫ボードを作る」は、アドレスの最後に #new を付けたときだけ出す（間違えて作らないように）
     const allowCreate = /(^#|&)new/.test(location.hash);
-    sync.textContent = "合言葉が必要です";
-    showMessage("合言葉を入れてください",
-      `<p>院内で決めた合言葉を入れてください。この端末では、次からは入れなくても開けます。</p>
-      <form id="pass-form" class="copyline" autocomplete="off"><input id="pass-in" aria-label="合言葉" placeholder="合言葉" style="background:var(--surface)"><button class="btn primary" id="pass-open" type="submit">開く</button></form>
-      <p id="pass-msg"></p><p>合言葉が分からないときは、管理している人に聞いてください。</p>`,
+    sync.textContent = "パスワードが必要です";
+    showMessage("パスワードを入れてください",
+      `<p>院内で決めたパスワードを入れてください。この端末では、次からは入れなくても開けます。</p>
+      <form id="pass-form" class="copyline" autocomplete="off"><input id="pass-in" type="password" aria-label="パスワード" placeholder="パスワード" style="background:var(--surface)"><button class="btn primary" id="pass-open" type="submit">開く</button></form>
+      <p id="pass-msg"></p><p>パスワードが分からないときは、管理している人に聞いてください。</p>`,
       !allowCreate ? "" : `<div class="box"><h4>はじめて使う場合</h4><p>新しい在庫ボードを作ると、専用のリンクが発行されます。作ったあとは「設定」タブでリンクをコピーして、スタッフに共有してください。</p><div class="acts"><button class="btn primary" data-act="create">新しい在庫ボードを作る</button></div></div>`);
     return;
   }
