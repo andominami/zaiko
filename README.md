@@ -14,6 +14,7 @@ GitHub Pages で公開し、データは Firebase（Firestore）に保存しま�
 | ファイル | 内容 |
 |---|---|
 | `index.html` | 画面とデザイン |
+| `logo.png` | たんぽぽのマーク |
 | `app.js` | 動き（在庫の計算、保存など） |
 | `firebase-config.js` | Firebase の接続設定（手順2で書き換えます） |
 | `firestore.rules` | データを守るルール（手順2で Firebase に貼り付けます） |
@@ -61,7 +62,7 @@ GitHub Pages で公開し、データは Firebase（Firestore）に保存しま�
 ### 4. GitHub に置いて公開する
 
 1. GitHub で「New repository」を押し、名前を `zaiko` にします。**Public** を選んで作成します。
-2. 「uploading an existing file」（または「Add file」→「Upload files」）を押します。`index.html`・`app.js`・`firebase-config.js`・`firestore.rules`・`README.md` の5つをドラッグして「Commit changes」を押します。
+2. 「uploading an existing file」（または「Add file」→「Upload files」）を押します。`index.html`・`app.js`・`firebase-config.js`・`firestore.rules`・`README.md`・`logo.png` の6つをドラッグして「Commit changes」を押します。
    - **移行用データの .json ファイルはアップロードしないでください。**
 3. リポジトリの「Settings」→ 左の「Pages」を開きます。
 4. 「Branch」を `main`、フォルダを `/ (root)` にして「Save」を押します。
